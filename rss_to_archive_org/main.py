@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import requests
+import tenacity
 from dotenv import find_dotenv, load_dotenv
 from reader import (
     Feed,
@@ -38,7 +39,7 @@ if access_key is None or secret_key is None:
     stop=stop_after_attempt(max_attempt_number=10),
     retry=retry_if_exception_type(exception_types=requests.RequestException),
 )
-def add_entry_to_archive(url: str) -> str:
+def add_entry_to_archive(url: str) -> str | None:
     """Add an entry to archive.org.
 
     Args:
@@ -67,7 +68,16 @@ def add_entry_to_archive(url: str) -> str:
         timeout=10,
     )
     data = response.json()
-    job_id: str = data["job_id"]
+
+    job_id: str | None = None
+    try:
+        job_id = data["job_id"]
+    except KeyError:
+        logger.exception(f"Failed to add {url} to archive.org.")  # noqa: G004
+        # Save URL to file so we can try to add it again later
+        with Path.open(Path("no_job_id.txt"), mode="a") as f:
+            f.write(f"{url}\n")
+
     return job_id
 
 
@@ -180,7 +190,7 @@ def main() -> None:
                 job_id: str | None = None
                 try:
                     job_id = add_entry_to_archive(url=entry.link)
-                except requests.RequestException:
+                except tenacity.RetryError:
                     logger.exception("Failed to add entry to archive.org.")
 
                 reader.mark_entry_as_read(entry)
@@ -189,8 +199,8 @@ def main() -> None:
                 try:
                     if job_id:
                         get_status(job_id=job_id)
-                except requests.RequestException:
-                    logger.exception("Failed to get status from archive.org.")
+                except tenacity.RetryError:
+                    logger.exception(msg="Failed to get status from archive.org.")
 
                 logger.info("Sleeping for 11 seconds to avoid rate limiting...")
                 time.sleep(11)
