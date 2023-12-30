@@ -176,10 +176,21 @@ def main() -> None:
         if entry.link:
             try:
                 logger.info(f"Adding {entry.link} to archive.org...")  # noqa: G004
-                job_id: str = add_entry_to_archive(url=entry.link)
+
+                job_id: str | None = None
+                try:
+                    job_id = add_entry_to_archive(url=entry.link)
+                except requests.RequestException:
+                    logger.exception("Failed to add entry to archive.org.")
+
                 reader.mark_entry_as_read(entry)
 
-                get_status(job_id=job_id)
+                # Get the status of the job, either "success" or "error"
+                try:
+                    if job_id:
+                        get_status(job_id=job_id)
+                except requests.RequestException:
+                    logger.exception("Failed to get status from archive.org.")
 
                 logger.info("Sleeping for 11 seconds to avoid rate limiting...")
                 time.sleep(11)
