@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "rss-to-archive-org"
+version = "0.1.0"
+description = ""
+authors = ["Joakim Hellsén <tlovinator@gmail.com>"]
+readme = "README.md"
+packages = [{ include = "rss_to_archive_org" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+reader = "^3.10"
+python-dotenv = "^1.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
