@@ -98,8 +98,8 @@ def get_status(job_id: str) -> str:
             logger.error(f"{data['message']}")  # noqa: G004
 
             # Save URL to file so we can try to add it again later
-            with Path.open(Path("error_urls.txt")) as f:
-                f.write(f"{data['original_url']}\n")
+            with Path.open(Path("error_urls.txt"), mode="a") as f:
+                f.write(f"{data['message']}\n")
 
             return "error"
 
