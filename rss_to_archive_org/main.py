@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
+import sys
 import time
+from pathlib import Path
 
 import requests
 from dotenv import find_dotenv, load_dotenv
@@ -13,8 +16,13 @@ from reader import (
     Reader,
     make_reader,
 )
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from rss_to_archive_org.feeds import rss_feeds
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger: logging.Logger = logging.getLogger(__name__)
+
 
 load_dotenv(dotenv_path=find_dotenv(), verbose=True)
 access_key: str | None = os.environ.get("ARCHIVE_ORG_ACCESS_KEY")
@@ -25,6 +33,11 @@ if access_key is None or secret_key is None:
     raise ValueError(msg)
 
 
+@retry(
+    wait=wait_fixed(wait=5),
+    stop=stop_after_attempt(max_attempt_number=10),
+    retry=retry_if_exception_type(exception_types=requests.RequestException),
+)
 def add_entry_to_archive(url: str) -> str:
     """Add an entry to archive.org.
 
@@ -58,30 +71,40 @@ def add_entry_to_archive(url: str) -> str:
     return job_id
 
 
-def get_status(job_id: str) -> None:
+@retry(
+    wait=wait_fixed(wait=5),
+    stop=stop_after_attempt(max_attempt_number=10),
+    retry=retry_if_exception_type(exception_types=requests.RequestException),
+)
+def get_status(job_id: str) -> str:
     """Get the status of the job.
 
     Args:
         job_id: The job id returned from add_entry_to_archive.
+
+    Returns:
+        The status of the job. Either "success" or "error". Only used for testing.
     """
     while True:
         status_url: str = f"http://web.archive.org/save/status/{job_id}"
-        try:
-            response: requests.Response = requests.get(url=status_url, timeout=10)
-        except requests.exceptions.Timeout:
-            time.sleep(5)
-            continue
-        except requests.exceptions.ConnectionError:
-            time.sleep(5)
-            continue
+        response: requests.Response = requests.get(url=status_url, timeout=10)
 
         data = response.json()
         if data["status"] == "success":
-            break
+            msg: str = f"Successfully added https://web.archive.org/web/{data['timestamp']}/{data['original_url']} to archive.org."  # noqa: E501
+            logger.info(msg)
+            return "success"
         if data["status"] == "error":
-            break
+            logger.error(f"{data['message']}")  # noqa: G004
+
+            # Save URL to file so we can try to add it again later
+            with Path.open(Path("error_urls.txt")) as f:
+                f.write(f"{data['original_url']}\n")
+
+            return "error"
 
         time.sleep(5)
+        logger.info("Waiting for archive.org to finish saving the page...")
 
 
 def disable_removed_feeds(feeds_in_db: list[Feed], reader: Reader) -> None:
@@ -102,6 +125,7 @@ def disable_removed_feeds(feeds_in_db: list[Feed], reader: Reader) -> None:
                 for entry in reader.get_entries(feed=feed):
                     reader.mark_entry_as_read(entry)
             except FeedNotFoundError:
+                logger.exception(f"Feed {feed.url} not found in database.")  # noqa: G004
                 continue
 
 
@@ -114,16 +138,18 @@ def add_new_feeds(feeds_in_db: list[Feed], reader: Reader) -> None:
     """
     feeds_to_add: list[str] = [feed for feed in rss_feeds if feed not in feeds_in_db]
     if feeds_to_add:
-        for feed in feeds_to_add:
+        for feed_url in feeds_to_add:
             try:
-                reader.add_feed(feed)
+                reader.add_feed(feed_url)
             except FeedExistsError:
+                logger.exception(f"Feed '{feed_url}' already exists in database.")  # noqa: G004
                 continue
             except InvalidFeedURLError:
+                logger.exception(f"Feed '{feed_url}' is not a valid url.")  # noqa: G004
                 continue
 
             # Mark all entries as read so we only send new entries to archive.org
-            for entry in reader.get_entries(feed=feed):
+            for entry in reader.get_entries(feed=feed_url):
                 reader.mark_entry_as_read(entry)
 
 
@@ -148,13 +174,18 @@ def main() -> None:
     new_entries = list(reader.get_entries(read=False))
     for entry in new_entries:
         if entry.link:
-            job_id: str = add_entry_to_archive(url=entry.link)
-            reader.mark_entry_as_read(entry)
+            try:
+                logger.info(f"Adding {entry.link} to archive.org...")  # noqa: G004
+                job_id: str = add_entry_to_archive(url=entry.link)
+                reader.mark_entry_as_read(entry)
 
-            get_status(job_id=job_id)
+                get_status(job_id=job_id)
 
-            # Sleep for 30 seconds to avoid rate limiting
-            time.sleep(30)
+                logger.info("Sleeping for 11 seconds to avoid rate limiting...")
+                time.sleep(11)
+            except KeyboardInterrupt:
+                logger.info("Exiting...")
+                sys.exit(0)
 
 
 if __name__ == "__main__":
