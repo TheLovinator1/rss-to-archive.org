@@ -1,5 +1,7 @@
 """List of RSS feeds to add to the RSS reader."""
 
+from __future__ import annotations
+
 rss_feeds: list[str] = [
     "https://www.svt.se/kultur/rss.xml",
     "https://www.svt.se/nyheter/amne/svt-nyheter-verifierar-krigets-bilder/rss.xml",

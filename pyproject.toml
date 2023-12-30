@@ -11,6 +11,26 @@ python = "^3.12"
 reader = "^3.10"
 python-dotenv = "^1.0.0"
 
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^3.6.0"
+
 [build-system]
-requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+requires = [
+  "poetry-core",
+]
+
+[tool.ruff]
+fix = true
+unsafe-fixes = true
+preview = true
+select = ["ALL"]
+ignore = [
+    "CPY001", # Missing copyright notice at top of file
+    "D100",   # Missing docstring in public module
+    "D104",   # Missing docstring in public package
+]
+line-length = 120
+
+[tool.ruff.pydocstyle]
+convention = "google"
