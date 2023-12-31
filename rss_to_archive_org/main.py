@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 import sys
 import time
@@ -9,6 +8,7 @@ from pathlib import Path
 import requests
 import tenacity
 from dotenv import find_dotenv, load_dotenv
+from loguru import logger
 from reader import (
     Feed,
     FeedExistsError,
@@ -20,10 +20,6 @@ from reader import (
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from rss_to_archive_org.feeds import rss_feeds
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger: logging.Logger = logging.getLogger(__name__)
-
 
 load_dotenv(dotenv_path=find_dotenv(), verbose=True)
 access_key: str | None = os.environ.get("ARCHIVE_ORG_ACCESS_KEY")
@@ -73,7 +69,7 @@ def add_entry_to_archive(url: str) -> str | None:
     try:
         job_id = data["job_id"]
     except KeyError:
-        logger.exception(f"Failed to add {url} to archive.org.")  # noqa: G004
+        logger.exception(f"Failed to add {url} to archive.org.")
         # Save URL to file so we can try to add it again later
         with Path.open(Path("no_job_id.txt"), mode="a") as f:
             f.write(f"{url}\n")
@@ -105,7 +101,7 @@ def get_status(job_id: str) -> str:
             logger.info(msg)
             return "success"
         if data["status"] == "error":
-            logger.error(f"{data['message']}")  # noqa: G004
+            logger.error(f"{data['message']}")
 
             # Save URL to file so we can try to add it again later
             with Path.open(Path("error_urls.txt"), mode="a") as f:
@@ -134,8 +130,10 @@ def disable_removed_feeds(feeds_in_db: list[Feed], reader: Reader) -> None:
                 # Mark all the existing entries as read
                 for entry in reader.get_entries(feed=feed):
                     reader.mark_entry_as_read(entry)
+
+                logger.info(f"Disabled feed {feed.url}.")
             except FeedNotFoundError:
-                logger.exception(f"Feed {feed.url} not found in database.")  # noqa: G004
+                logger.exception(f"Feed {feed.url} not found in database.")
                 continue
 
 
@@ -152,10 +150,9 @@ def add_new_feeds(feeds_in_db: list[Feed], reader: Reader) -> None:
             try:
                 reader.add_feed(feed_url)
             except FeedExistsError:
-                logger.exception(f"Feed '{feed_url}' already exists in database.")  # noqa: G004
                 continue
             except InvalidFeedURLError:
-                logger.exception(f"Feed '{feed_url}' is not a valid url.")  # noqa: G004
+                logger.exception(f"Feed '{feed_url}' is not a valid url.")
                 continue
 
             # Mark all entries as read so we only send new entries to archive.org
@@ -182,10 +179,11 @@ def main() -> None:
 
     # Get the new entries
     new_entries = list(reader.get_entries(read=False))
+    logger.info(f"Found {len(new_entries)} new entries.")
     for entry in new_entries:
         if entry.link:
             try:
-                logger.info(f"Adding {entry.link} to archive.org...")  # noqa: G004
+                logger.info(f"Adding {entry.link} to archive.org...")
 
                 job_id: str | None = None
                 try:
@@ -200,7 +198,7 @@ def main() -> None:
                     if job_id:
                         get_status(job_id=job_id)
                 except tenacity.RetryError:
-                    logger.exception(msg="Failed to get status from archive.org.")
+                    logger.exception("Failed to get status from archive.org.")
 
                 logger.info("Sleeping for 11 seconds to avoid rate limiting...")
                 time.sleep(11)
@@ -210,4 +208,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    logger.info("Starting rss_to_archive_org :rocket:")
     main()

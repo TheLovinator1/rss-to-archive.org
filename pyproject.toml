@@ -12,6 +12,7 @@ reader = "^3.10"
 python-dotenv = "^1.0.0"
 requests-mock = "^1.11.0"
 tenacity = "^8.2.3"
+loguru = "^0.7.2"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.6.0"
