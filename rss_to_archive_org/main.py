@@ -214,5 +214,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    logger.info("Starting rss_to_archive_org :rocket:")
+    logger.info("Hello. Starting archiving RSS feeds...")
+    logger.info("Press Ctrl+C to exit.")
     main()
+    logger.info("Bye.")
