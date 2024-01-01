@@ -181,6 +181,10 @@ def main() -> None:
 
     # Get the new entries
     new_entries = list(reader.get_entries(read=False))
+    if not new_entries:
+        logger.info("No new entries found.")
+        return
+
     logger.info(f"Found {len(new_entries)} new entries.")
     for entry in new_entries:
         if entry.link:
