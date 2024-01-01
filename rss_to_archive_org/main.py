@@ -113,13 +113,15 @@ def get_status(job_id: str) -> str:
         logger.info("Waiting for archive.org to finish saving the page...")
 
 
-def disable_removed_feeds(feeds_in_db: list[Feed], reader: Reader) -> None:
+def disable_removed_feeds(reader: Reader) -> None:
     """Disable feeds that are in the database but not in the list of feeds to add.
 
     Args:
         feeds_in_db: The feeds that are in the database.
         reader: The reader object.
     """
+    feeds_in_db = list(reader.get_feeds(updates_enabled=True))
+
     # Check if a feed are in the database but not in the list of feeds to add
     for feed in feeds_in_db:
         if feed.url not in rss_feeds:
@@ -169,7 +171,7 @@ def main() -> None:
     feeds_in_db = list(reader.get_feeds())
 
     # Disable feeds that are in the database but not in the list of feeds to add
-    disable_removed_feeds(feeds_in_db=feeds_in_db, reader=reader)
+    disable_removed_feeds(reader=reader)
 
     # Get the feeds that are not in feeds_in_db but in rss_feeds and add them to the database
     add_new_feeds(feeds_in_db=feeds_in_db, reader=reader)
